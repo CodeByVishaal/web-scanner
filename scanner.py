@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 import sys
 from typing import List, Dict, Set
 
+# Run this command -> python scanner.py http://testphp.vulnweb.com
+
 class WebSecurityScanner:
     def __init__(self, target_url: str, max_depth: int = 3):
         """
