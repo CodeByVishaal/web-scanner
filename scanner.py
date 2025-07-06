@@ -54,7 +54,8 @@ class WebSecurityScanner:
                     self.crawl(next_url, depth + 1)
 
             for link in self.visited_urls:
-                self.check_sql_injection(link)
+                # self.check_sql_injection(link)
+                self.check_xss(link)
                     
 
         except Exception as e:
@@ -84,35 +85,79 @@ class WebSecurityScanner:
                             'parameter': param,
                             'payload': payload
                         })
-                print(self.vulnerabilities)
+                
 
             except Exception as e:
                 print(f"Error testing SQL injection on {url}: {str(e)}")
 
+    def check_xss(self, url: str) -> None:
+        """Test for potential Cross-Site Scripting vulnerabilities"""
+        xss_payloads = [
+            "<script>alert('XSS')</script>",
+            "<img src=x onerror=alert('XSS')>",
+            "javascript:alert('XSS')"
+        ]
+
+        for payload in xss_payloads:
+            try:
+                # Test GET parameters
+                parsed = urllib.parse.urlparse(url)
+                params = urllib.parse.parse_qs(parsed.query)
+
+                for param in params:
+                    test_url = url.replace(f"{param}={params[param][0]}", 
+                                        f"{param}={urllib.parse.quote(payload)}")
+                    response = self.session.get(test_url)
+
+                    if payload in response.text:
+                        self.vulnerabilities.append({
+                            'type': 'Cross-Site Scripting (XSS)',
+                            'url': url,
+                            'parameter': param,
+                            'payload': payload
+                        })
+
+            except Exception as e:
+                print(f"Error testing XSS on {url}: {str(e)}")
+
+    
+    def report_all(self):
+        print("\nVisited URLs:")
+        for url in self.visited_urls:
+            print(url)
+
+        if not self.vulnerabilities:
+            print("\nNo vulnerabilities found.")
+            return
+
+        print("\n[!] Vulnerabilities Found:")
+        for v in self.vulnerabilities:
+            print(f"- Type: {v['type']}")
+            print(f"  URL: {v['url']}")
+            print(f"  Parameter: {v['parameter']}")
+            print(f"  Payload: {v['payload']}")
+
+
 """
-    | Demo Site                                 | Example URL to Test                                              |
-| ----------------------------------------- | ---------------------------------------------------------------- |
-| [TestPHP](http://testphp.vulnweb.com)     | `http://testphp.vulnweb.com/artists.php?artist=1`                |
-| [WebScanTest](http://www.webscantest.com) | `http://www.webscantest.com/datastore/search_get.php?search=red` |
-| [TestFire](https://demo.testfire.net)     | `https://demo.testfire.net/search.aspx?txtSearch=bank`           |
+ Working Demo URLs (Tested and Active)
+🔹 1. testphp.vulnweb.com (SQLi, XSS)
+🎯 SQLi:
+http://testphp.vulnweb.com/artists.php?artist=1
+
+💥 XSS:
+http://testphp.vulnweb.com/search.php?test=query
+
+✅ Confirmed Working
 
 """
 
 if __name__ == "__main__":
     import urllib3
-
-    urllib3.disable_warnings()  # suppress HTTPS warnings
-
-    scanner = WebSecurityScanner("http://testphp.vulnweb.com")  # Use a safe test site
-    print("Normalized URL:", scanner.normalize_url(scanner.target_url))
+    urllib3.disable_warnings()
 
     scanner = WebSecurityScanner("http://testphp.vulnweb.com/artists.php?artist=1", max_depth=1)
-    scanner.crawl(scanner.target_url)
+    print("Normalized URL:", scanner.normalize_url(scanner.target_url))
     
-    print("\nVisited URLs:")
-    for url in scanner.visited_urls:
-        print(url)
+    scanner.crawl(scanner.target_url)
+    scanner.report_all()
 
-    print("\nVulnerable URLs:")
-    for url in scanner.vulnerabilities:
-        print(url)
