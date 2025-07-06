@@ -120,6 +120,52 @@ class WebSecurityScanner:
             except Exception as e:
                 print(f"Error testing XSS on {url}: {str(e)}")
 
+    def check_sensitive_info(self, url: str) -> None:
+        """Check for exposed sensitive information"""
+        sensitive_patterns = {
+            'email': r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
+            'phone': r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',
+            'ssn': r'\b\d{3}-\d{2}-\d{4}\b',
+            'api_key': r'api[_-]?key[_-]?([\'"|`])([a-zA-Z0-9]{32,45})\1'
+        }
+
+        try:
+            response = self.session.get(url)
+
+            for info_type, pattern in sensitive_patterns.items():
+                matches = re.finditer(pattern, response.text)
+                for match in matches:
+                    self.vulnerabilities.append({
+                        'type': 'Sensitive Information Exposure',
+                        'url': url,
+                        'info_type': info_type,
+                        'pattern': pattern
+                    })
+
+        except Exception as e:
+            print(f"Error checking sensitive information on {url}: {str(e)}")
+
+    def scan(self) -> List[Dict]:
+        """
+        Main scanning method that coordinates the security checks
+
+        Returns:
+            List of discovered vulnerabilities
+        """
+        print(f"\n{colorama.Fore.BLUE}Starting security scan of {self.target_url}{colorama.Style.RESET_ALL}\n")
+
+        # First, crawl the website
+        self.crawl(self.target_url)
+
+        # Then run security checks on all discovered URLs
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            for url in self.visited_urls:
+                executor.submit(self.check_sql_injection, url)
+                executor.submit(self.check_xss, url)
+                executor.submit(self.check_sensitive_info, url)
+
+        return self.vulnerabilities
+
     
     def report_all(self):
         print("\nVisited URLs:")
@@ -132,10 +178,19 @@ class WebSecurityScanner:
 
         print("\n[!] Vulnerabilities Found:")
         for v in self.vulnerabilities:
-            print(f"- Type: {v['type']}")
-            print(f"  URL: {v['url']}")
-            print(f"  Parameter: {v['parameter']}")
-            print(f"  Payload: {v['payload']}")
+            print(f"- Type: {v.get('type', 'N/A')}")
+            print(f"  URL: {v.get('url', 'N/A')}")
+
+            # Only print if the key exists
+            if 'parameter' in v:
+                print(f"  Parameter: {v['parameter']}")
+            if 'payload' in v:
+                print(f"  Payload: {v['payload']}")
+            if 'info_type' in v:
+                print(f"  Info Type: {v['info_type']}")
+            if 'pattern' in v:
+                print(f"  Pattern: {v['pattern']}")
+
 
 
 """
@@ -149,15 +204,34 @@ http://testphp.vulnweb.com/search.php?test=query
 
 ✅ Confirmed Working
 
+
+Run this command -> python scanner.py http://testphp.vulnweb.com
+
 """
 
 if __name__ == "__main__":
-    import urllib3
-    urllib3.disable_warnings()
+    if len(sys.argv) != 2:
+        print("Usage: python scanner.py <target_url>")
+        sys.exit(1)
 
-    scanner = WebSecurityScanner("http://testphp.vulnweb.com/artists.php?artist=1", max_depth=1)
-    print("Normalized URL:", scanner.normalize_url(scanner.target_url))
-    
-    scanner.crawl(scanner.target_url)
+    target_url = sys.argv[1]
+    scanner = WebSecurityScanner(target_url)
+    vulnerabilities = scanner.scan()
+
+    # Print summary
+    print(f"\n{colorama.Fore.GREEN}Scan Complete!{colorama.Style.RESET_ALL}")
+    print(f"Total URLs scanned: {len(scanner.visited_urls)}")
+    print(f"Vulnerabilities found: {len(vulnerabilities)}")
     scanner.report_all()
+
+
+# if __name__ == "__main__":
+#     import urllib3
+#     urllib3.disable_warnings()
+
+#     scanner = WebSecurityScanner("http://testphp.vulnweb.com/artists.php?artist=1", max_depth=1)
+#     print("Normalized URL:", scanner.normalize_url(scanner.target_url))
+    
+#     scanner.crawl(scanner.target_url)
+#     scanner.report_all()
 
